@@ -16,6 +16,7 @@ class User(AbstractUser):
     email = models.EmailField(unique=True)
     phone_number = models.CharField(max_length=20, null=True, blank=True)
     role = models.CharField(max_length=10, choices=USER_ROLES)
+    password = models.CharField(max_length=128)
     created_at = models.DateTimeField(default=timezone.now)
 
     REQUIRED_FIELDS = ['email', 'first_name', 'last_name', 'role']
