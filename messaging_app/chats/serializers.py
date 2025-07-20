@@ -2,8 +2,9 @@ from rest_framework import serializers
 from .models import User, Conversation, Message
 
 
-# User Serializer
 class UserSerializer(serializers.ModelSerializer):
+    phone_number = serializers.CharField(required=False, allow_blank=True)  # ✅ Explicit use of CharField
+
     class Meta:
         model = User
         fields = [
@@ -18,7 +19,6 @@ class UserSerializer(serializers.ModelSerializer):
         ]
 
 
-# Message Serializer
 class MessageSerializer(serializers.ModelSerializer):
     sender = UserSerializer(read_only=True)
 
@@ -32,10 +32,9 @@ class MessageSerializer(serializers.ModelSerializer):
         ]
 
 
-# Conversation Serializer (with nested messages and participants)
 class ConversationSerializer(serializers.ModelSerializer):
     participants = UserSerializer(many=True, read_only=True)
-    messages = MessageSerializer(many=True, read_only=True)
+    messages = serializers.SerializerMethodField()  # ✅ Now handled via method
 
     class Meta:
         model = Conversation
@@ -45,3 +44,21 @@ class ConversationSerializer(serializers.ModelSerializer):
             'created_at',
             'messages',
         ]
+
+    def get_messages(self, obj):
+        messages = obj.messages.all().order_by('sent_at')
+        return MessageSerializer(messages, many=True).data
+
+
+# ✅ Example of using ValidationError for custom validation (if needed for message body)
+class CreateMessageSerializer(serializers.ModelSerializer):
+    message_body = serializers.CharField()
+
+    class Meta:
+        model = Message
+        fields = ['conversation', 'sender', 'message_body']
+
+    def validate_message_body(self, value):
+        if len(value.strip()) == 0:
+            raise serializers.ValidationError("Message body cannot be empty.")
+        return value
