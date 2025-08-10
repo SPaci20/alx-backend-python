@@ -5,12 +5,12 @@ services:
     image: mysql:8.0
     restart: always
     environment:
-      MYSQLUSER: ${MYSQLUSER}
-      MYSQLDB: ${MYSQLDB}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_DB: ${MYSQL_DB}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
     volumes:
-      - db_data:/var/lib/mysql
+      - mysql_data:/var/lib/mysql  # <-- Add this line to persist data
     ports:
       - "3306:3306"
 
@@ -22,12 +22,12 @@ services:
     ports:
       - "8000:8000"
     environment:
-      MYSQLUSER: ${MYSQLUSER}
-      MYSQLDB: ${MYSQLDB}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_DB: ${MYSQL_DB}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
-      MYSQLHOST: db
+      MYSQL_HOST: db
     depends_on:
       - db
 
 volumes:
-  db_data:
+  mysql_data:   # <-- Declare the volume here
