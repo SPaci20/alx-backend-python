@@ -5,8 +5,8 @@ services:
     image: mysql:8.0
     restart: always
     environment:
-      MYSQL_DATABASE: ${MYSQL_DATABASE}
-      MYSQL_USER: ${MYSQL_USER}
+      MYSQLUSER: ${MYSQLUSER}
+      MYSQLDB: ${MYSQLDB}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
     volumes:
@@ -16,16 +16,16 @@ services:
 
   web:
     build: .
-    command: python manage.py runserver 0.0.0.0:8000
+    command: python3 manage.py runserver 0.0.0.0:8000
     volumes:
       - .:/app
     ports:
       - "8000:8000"
     environment:
-      - MYSQL_DATABASE=${MYSQL_DATABASE}
-      - MYSQL_USER=${MYSQL_USER}
-      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
-      - MYSQL_HOST=db
+      MYSQLUSER: ${MYSQLUSER}
+      MYSQLDB: ${MYSQLDB}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQLHOST: db
     depends_on:
       - db
 

@@ -80,10 +80,10 @@ import os
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': os.getenv('MYSQL_DATABASE'),
-        'USER': os.getenv('MYSQL_USER'),
+        'NAME': os.getenv('MYSQLDB'),
+        'USER': os.getenv('MYSQLUSER'),
         'PASSWORD': os.getenv('MYSQL_PASSWORD'),
-        'HOST': os.getenv('MYSQL_HOST', 'localhost'),
+        'HOST': os.getenv('MYSQLHOST', 'localhost'),
         'PORT': '3306',
     }
 }
