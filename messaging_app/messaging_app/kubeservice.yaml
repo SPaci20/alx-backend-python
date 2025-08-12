@@ -1,0 +1,126 @@
+# Kubernetes Services for Blue-Green Deployment
+# File: messaging_app/kubeservice.yaml
+# Repository: alx-backend-python
+
+# Main Production Service - Initially points to Blue deployment
+apiVersion: v1
+kind: Service
+metadata:
+  name: django-messaging-service
+  labels:
+    app: django-messaging-app
+    service-type: production
+spec:
+  type: ClusterIP
+  selector:
+    app: django-messaging-app
+    version: blue  # Initially pointing to blue deployment
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8000
+    protocol: TCP
+
+---
+# Blue Service - Always points to blue deployment
+apiVersion: v1
+kind: Service
+metadata:
+  name: django-messaging-service-blue
+  labels:
+    app: django-messaging-app
+    service-type: blue
+spec:
+  type: ClusterIP
+  selector:
+    app: django-messaging-app
+    version: blue
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8000
+    protocol: TCP
+
+---
+# Green Service - Always points to green deployment
+apiVersion: v1
+kind: Service
+metadata:
+  name: django-messaging-service-green
+  labels:
+    app: django-messaging-app
+    service-type: green
+spec:
+  type: ClusterIP
+  selector:
+    app: django-messaging-app
+    version: green
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8000
+    protocol: TCP
+
+---
+# Preview Service - For testing new deployments before switching traffic
+apiVersion: v1
+kind: Service
+metadata:
+  name: django-messaging-service-preview
+  labels:
+    app: django-messaging-app
+    service-type: preview
+spec:
+  type: NodePort
+  selector:
+    app: django-messaging-app
+    version: green  # Points to green for testing
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8000
+    nodePort: 30080  # External access for testing
+    protocol: TCP
+
+---
+# Canary Service - For gradual traffic switching (optional)
+apiVersion: v1
+kind: Service
+metadata:
+  name: django-messaging-service-canary
+  labels:
+    app: django-messaging-app
+    service-type: canary
+spec:
+  type: ClusterIP
+  selector:
+    app: django-messaging-app
+    # No version selector - will distribute across both blue and green
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8000
+    protocol: TCP
+
+---
+# External Service for LoadBalancer access (optional)
+apiVersion: v1
+kind: Service
+metadata:
+  name: django-messaging-service-external
+  labels:
+    app: django-messaging-app
+    service-type: external
+spec:
+  type: LoadBalancer
+  selector:
+    app: django-messaging-app
+    version: blue  # Initially pointing to blue
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8000
+    protocol: TCP
+  # Optional: specify loadBalancerSourceRanges for security
+  # loadBalancerSourceRanges:
+  # - 10.0.0.0/8
