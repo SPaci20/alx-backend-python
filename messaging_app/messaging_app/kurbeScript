@@ -120,17 +120,10 @@ start_cluster() {
 verify_cluster() {
     print_status "Verifying cluster status..."
     
-    # Use minikube kubectl if kubectl is not available
-    if command_exists kubectl; then
-        KUBECTL_CMD="kubectl"
-    else
-        KUBECTL_CMD="minikube kubectl --"
-    fi
-    
     echo ""
     print_status "Cluster Information:"
     echo "----------------------------------------"
-    $KUBECTL_CMD cluster-info
+    kubectl cluster-info
     
     echo ""
     print_status "Cluster Status:"
@@ -140,31 +133,24 @@ verify_cluster() {
     echo ""
     print_status "Node Information:"
     echo "----------------------------------------"
-    $KUBECTL_CMD get nodes -o wide
+    kubectl get nodes -o wide
 }
 
 # Function to retrieve available pods
 get_pods() {
     print_status "Retrieving available pods..."
     
-    # Use minikube kubectl if kubectl is not available
-    if command_exists kubectl; then
-        KUBECTL_CMD="kubectl"
-    else
-        KUBECTL_CMD="minikube kubectl --"
-    fi
-    
     echo ""
     print_status "Pods in all namespaces:"
     echo "----------------------------------------"
-    $KUBECTL_CMD get pods --all-namespaces
+    kubectl get pods --all-namespaces
     
     echo ""
     print_status "Pods in default namespace:"
     echo "----------------------------------------"
-    $KUBECTL_CMD get pods
+    kubectl get pods
     
-    if [ $($KUBECTL_CMD get pods --no-headers | wc -l) -eq 0 ]; then
+    if [ $(kubectl get pods --no-headers | wc -l) -eq 0 ]; then
         print_warning "No pods found in default namespace"
         print_status "This is normal for a fresh cluster"
     fi
