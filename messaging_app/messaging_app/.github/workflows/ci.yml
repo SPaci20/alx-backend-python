@@ -1,0 +1,71 @@
+name: Django CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: test_db
+          MYSQL_USER: test_user
+          MYSQL_PASSWORD: test_pass
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+
+    env:
+      DATABASE_HOST: 127.0.0.1
+      DATABASE_NAME: test_db
+      DATABASE_USER: test_user
+      DATABASE_PASSWORD: test_pass
+
+    steps:
+      # Checkout code
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # Set up Python
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+
+      # Install dependencies
+      - name: Install dependencies
+        run: |
+          python -m venv venv
+          . venv/bin/activate
+          pip install --upgrade pip
+          pip install -r messaging_app/requirements.txt
+          pip install pytest pytest-django mysqlclient
+
+      # Run tests
+      - name: Run Tests
+        run: |
+          . venv/bin/activate
+          export DJANGO_DB_HOST=$DATABASE_HOST
+          export DJANGO_DB_NAME=$DATABASE_NAME
+          export DJANGO_DB_USER=$DATABASE_USER
+          export DJANGO_DB_PASSWORD=$DATABASE_PASSWORD
+          pytest messaging_app --junitxml=report.xml
+
+      # Upload test report (optional)
+      - name: Upload test report
+        uses: actions/upload-artifact@v3
+        with:
+          name: pytest-report
+          path: report.xml
