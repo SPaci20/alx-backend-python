@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     tools {
-        python 'Python3'   // Requires configuring Python in Jenkins (Manage Jenkins → Global Tool Configuration)
+        python 'Python3'   // Make sure Python3 is configured under Manage Jenkins → Global Tool Configuration
     }
 
     stages {
@@ -17,14 +17,14 @@ pipeline {
         stage('Install dependencies') {
             steps {
                 sh 'python3 -m venv venv'
-                sh '. venv/bin/activate && pip install --upgrade pip pytest'
-                sh '. venv/bin/activate && pip install -r requirements.txt'
+                sh './venv/bin/pip install --upgrade pip pytest'
+                sh './venv/bin/pip install -r requirements.txt'
             }
         }
 
         stage('Run Tests') {
             steps {
-                sh '. venv/bin/activate && pytest --junitxml=report.xml'
+                sh './venv/bin/pytest --junitxml=report.xml'
             }
             post {
                 always {
@@ -35,6 +35,6 @@ pipeline {
     }
 
     triggers {
-        // Only manual trigger (no SCM polling or webhook)
+        // Manual trigger only
     }
 }
