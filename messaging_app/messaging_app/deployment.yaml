@@ -1,0 +1,105 @@
+# Kubernetes Deployment for Django Messaging App
+# File: messaging_app/deployment.yaml
+# Repository: alx-backend-python
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: django-messaging-app
+  labels:
+    app: django-messaging-app
+    version: v1
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: django-messaging-app
+  template:
+    metadata:
+      labels:
+        app: django-messaging-app
+    spec:
+      containers:
+      - name: django-messaging-app
+        image: django-messaging-app:latest
+        ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
+        env:
+        - name: DJANGO_SETTINGS_MODULE
+          value: "messaging_app.settings"
+        - name: DEBUG
+          value: "False"
+        - name: ALLOWED_HOSTS
+          value: "*"
+        - name: DATABASE_URL
+          value: "sqlite:///db.sqlite3"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health/
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health/
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        volumeMounts:
+        - name: static-files
+          mountPath: /app/staticfiles
+      volumes:
+      - name: static-files
+        emptyDir: {}
+      restartPolicy: Always
+
+---
+# Service to expose the Django app internally
+apiVersion: v1
+kind: Service
+metadata:
+  name: django-messaging-service
+  labels:
+    app: django-messaging-app
+spec:
+  type: ClusterIP
+  selector:
+    app: django-messaging-app
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8000
+    protocol: TCP
+
+---
+# ConfigMap for Django settings (optional)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: django-messaging-config
+data:
+  DJANGO_SETTINGS_MODULE: "messaging_app.settings"
+  DEBUG: "False"
+  ALLOWED_HOSTS: "*"
+  
+---
+# Secret for sensitive data (optional)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: django-messaging-secret
+type: Opaque
+data:
+  # Base64 encoded values
+  # Example: echo -n 'your-secret-key' | base64
+  SECRET_KEY: eW91ci1zZWNyZXQta2V5LWhlcmU=
+  # DATABASE_PASSWORD: cGFzc3dvcmQ=

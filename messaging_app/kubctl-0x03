@@ -1,0 +1,101 @@
+# Blue Deployment for Django Messaging App (Current/Stable Version)
+# File: messaging_app/blue_deployment.yaml
+# Repository: alx-backend-python
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: django-messaging-app-blue
+  labels:
+    app: django-messaging-app
+    version: blue
+    environment: production
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: django-messaging-app
+      version: blue
+  template:
+    metadata:
+      labels:
+        app: django-messaging-app
+        version: blue
+    spec:
+      containers:
+      - name: django-messaging-app
+        image: django-messaging-app:v2.0
+        ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
+        env:
+        - name: DJANGO_SETTINGS_MODULE
+          value: "messaging_app.settings"
+        - name: DEBUG
+          value: "False"
+        - name: ALLOWED_HOSTS
+          value: "*"
+        - name: DATABASE_URL
+          value: "sqlite:///db.sqlite3"
+        - name: DEPLOYMENT_VERSION
+          value: "blue-v2.0"
+        - name: DEPLOYMENT_COLOR
+          value: "blue"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health/
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health/
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2
+        volumeMounts:
+        - name: static-files
+          mountPath: /app/staticfiles
+      volumes:
+      - name: static-files
+        emptyDir: {}
+      restartPolicy: Always
+
+---
+# ConfigMap for Blue deployment
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: django-messaging-blue-config
+  labels:
+    version: blue
+data:
+  DJANGO_SETTINGS_MODULE: "messaging_app.settings"
+  DEBUG: "False"
+  ALLOWED_HOSTS: "*"
+  DEPLOYMENT_VERSION: "blue-v2.0"
+  
+---
+# Secret for Blue deployment
+apiVersion: v1
+kind: Secret
+metadata:
+  name: django-messaging-blue-secret
+  labels:
+    version: blue
+type: Opaque
+data:
+  # Base64 encoded values
+  SECRET_KEY: eW91ci1zZWNyZXQta2V5LWJsdWUtdjItaGVyZQ==

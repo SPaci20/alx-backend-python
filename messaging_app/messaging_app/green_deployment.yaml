@@ -1,0 +1,104 @@
+# Green Deployment for Django Messaging App (New Version)
+# File: messaging_app/green_deployment.yaml
+# Repository: alx-backend-python
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: django-messaging-app-green
+  labels:
+    app: django-messaging-app
+    version: green
+    environment: production
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: django-messaging-app
+      version: green
+  template:
+    metadata:
+      labels:
+        app: django-messaging-app
+        version: green
+    spec:
+      containers:
+      - name: django-messaging-app
+        image: django-messaging-app:v2.0
+        ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
+        env:
+        - name: DJANGO_SETTINGS_MODULE
+          value: "messaging_app.settings"
+        - name: DEBUG
+          value: "False"
+        - name: ALLOWED_HOSTS
+          value: "*"
+        - name: DATABASE_URL
+          value: "sqlite:///db.sqlite3"
+        - name: DEPLOYMENT_VERSION
+          value: "green-v2.0"
+        - name: DEPLOYMENT_COLOR
+          value: "green"
+        - name: NEW_FEATURE_ENABLED
+          value: "True"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health/
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health/
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2
+        volumeMounts:
+        - name: static-files
+          mountPath: /app/staticfiles
+      volumes:
+      - name: static-files
+        emptyDir: {}
+      restartPolicy: Always
+
+---
+# ConfigMap for Green deployment
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: django-messaging-green-config
+  labels:
+    version: green
+data:
+  DJANGO_SETTINGS_MODULE: "messaging_app.settings"
+  DEBUG: "False"
+  ALLOWED_HOSTS: "*"
+  DEPLOYMENT_VERSION: "green-v2.0"
+  NEW_FEATURE_ENABLED: "True"
+  
+---
+# Secret for Green deployment
+apiVersion: v1
+kind: Secret
+metadata:
+  name: django-messaging-green-secret
+  labels:
+    version: green
+type: Opaque
+data:
+  # Base64 encoded values
+  SECRET_KEY: eW91ci1zZWNyZXQta2V5LWdyZWVuLWhlcmU=

@@ -1,0 +1,79 @@
+# Commands for setting up Nginx Ingress Controller and applying Ingress configuration
+# File: messaging_app/commands.txt
+# Repository: alx-backend-python
+
+# Step 1: Install Nginx Ingress Controller
+# For minikube (recommended for local development)
+minikube addons enable ingress
+
+# Alternative: Install using kubectl (if not using minikube)
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.8.1/deploy/static/provider/cloud/deploy.yaml
+
+# Step 2: Wait for Nginx Ingress Controller to be ready
+kubectl wait --namespace ingress-nginx --for=condition=ready pod --selector=app.kubernetes.io/component=controller --timeout=300s
+
+# Step 3: Verify Nginx Ingress Controller is running
+kubectl get pods -n ingress-nginx
+
+# Step 4: Apply the Ingress configuration
+kubectl apply -f ingress.yaml
+
+# Step 5: Verify Ingress resource was created
+kubectl get ingress
+
+# Step 6: Get detailed information about the Ingress
+kubectl describe ingress django-messaging-ingress
+
+# Step 7: Get Ingress Controller external IP (for cloud environments)
+kubectl get service -n ingress-nginx ingress-nginx-controller
+
+# Step 8: For minikube - get the ingress IP
+minikube ip
+
+# Step 9: Add domain names to hosts file (for local testing)
+# On Windows: Add to C:\Windows\System32\drivers\etc\hosts
+# On Linux/Mac: Add to /etc/hosts
+# Replace <INGRESS_IP> with actual IP from minikube ip or kubectl get ingress
+# <INGRESS_IP> django-messaging.local
+# <INGRESS_IP> api.django-messaging.local
+
+# Step 10: Test the ingress endpoints
+# curl http://django-messaging.local/health/
+# curl http://django-messaging.local/api/
+# curl http://api.django-messaging.local/
+
+# Step 11: Enable ingress addon for minikube (if not already done)
+minikube addons enable ingress
+
+# Step 12: Check ingress status
+kubectl get ingress django-messaging-ingress -o wide
+
+# Step 13: View ingress logs (troubleshooting)
+kubectl logs -n ingress-nginx deployment/ingress-nginx-controller
+
+# Step 14: Delete ingress (if needed)
+# kubectl delete -f ingress.yaml
+
+# Step 15: Update ingress configuration (after making changes to ingress.yaml)
+kubectl apply -f ingress.yaml
+
+# Additional useful commands:
+
+# Check all ingress resources
+kubectl get ingress --all-namespaces
+
+# Watch ingress status changes
+kubectl get ingress -w
+
+# Test connectivity from within cluster
+kubectl run test-pod --rm -i --tty --image=busybox -- /bin/sh
+# Inside test pod: wget -qO- http://django-messaging-service/
+
+# Port forward to ingress controller (alternative testing method)
+kubectl port-forward -n ingress-nginx service/ingress-nginx-controller 8080:80
+
+# Check ingress controller configuration
+kubectl exec -n ingress-nginx deployment/ingress-nginx-controller -- cat /etc/nginx/nginx.conf
+
+# Restart ingress controller (if needed)
+kubectl rollout restart deployment/ingress-nginx-controller -n ingress-nginx

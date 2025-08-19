@@ -1,0 +1,434 @@
+#!/bin/bash
+
+# kubctl-0x02 - Blue-Green Deployment Script
+# File: messaging_app/kubctl-0x02
+# Repository: alx-backend-python
+
+set -e  # Exit on any error
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+MAGENTA='\033[0;35m'
+NC='\033[0m' # No Color
+
+# Configuration
+BLUE_DEPLOYMENT="django-messaging-app-blue"
+GREEN_DEPLOYMENT="django-messaging-app-green"
+MAIN_SERVICE="django-messaging-service"
+BLUE_SERVICE="django-messaging-service-blue"
+GREEN_SERVICE="django-messaging-service-green"
+PREVIEW_SERVICE="django-messaging-service-preview"
+NAMESPACE="default"
+
+# Function to print colored output
+print_status() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+print_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+print_header() {
+    echo -e "${CYAN}========================================${NC}"
+    echo -e "${CYAN} $1${NC}"
+    echo -e "${CYAN}========================================${NC}"
+}
+
+print_deployment() {
+    echo -e "${MAGENTA}[DEPLOY]${NC} $1"
+}
+
+# Function to check if command exists
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# Function to check prerequisites
+check_prerequisites() {
+    print_header "Checking Prerequisites"
+    
+    # Check kubectl
+    if ! command_exists kubectl; then
+        print_error "kubectl is not installed or not in PATH"
+        exit 1
+    fi
+    print_success "kubectl is available"
+    
+    # Check if cluster is accessible
+    if ! kubectl cluster-info >/dev/null 2>&1; then
+        print_error "Cannot connect to Kubernetes cluster"
+        print_status "Make sure your cluster is running (minikube start)"
+        exit 1
+    fi
+    print_success "Kubernetes cluster is accessible"
+    
+    # Check if deployment files exist
+    for file in blue_deployment.yaml green_deployment.yaml kubeservice.yaml; do
+        if [ ! -f "$file" ]; then
+            print_error "File $file not found"
+            exit 1
+        fi
+        print_success "Found $file"
+    done
+}
+
+# Function to get current active deployment
+get_active_deployment() {
+    ACTIVE_VERSION=$(kubectl get service "$MAIN_SERVICE" -o jsonpath='{.spec.selector.version}' 2>/dev/null || echo "none")
+    echo "$ACTIVE_VERSION"
+}
+
+# Function to deploy blue version
+deploy_blue() {
+    print_header "Deploying Blue Version"
+    
+    print_deployment "Applying blue deployment configuration..."
+    kubectl apply -f blue_deployment.yaml
+    
+    print_status "Waiting for blue deployment to be ready..."
+    kubectl rollout status deployment/"$BLUE_DEPLOYMENT" --timeout=300s
+    
+    # Check for errors in blue deployment
+    print_status "Checking for errors in blue deployment..."
+    kubectl logs deployment/"$BLUE_DEPLOYMENT" --tail=20 --prefix=true || print_warning "Could not retrieve logs (deployment might be starting)"
+    
+    print_success "Blue deployment completed successfully!"
+}
+
+# Function to deploy green version
+deploy_green() {
+    print_header "Deploying Green Version"
+    
+    print_deployment "Applying green deployment configuration..."
+    kubectl apply -f green_deployment.yaml
+    
+    print_status "Waiting for green deployment to be ready..."
+    kubectl rollout status deployment/"$GREEN_DEPLOYMENT" --timeout=300s
+    
+    # Check for errors in green deployment
+    print_status "Checking for errors in green deployment..."
+    kubectl logs deployment/"$GREEN_DEPLOYMENT" --tail=20 --prefix=true || print_warning "Could not retrieve logs (deployment might be starting)"
+    
+    print_success "Green deployment completed successfully!"
+}
+
+# Function to deploy services
+deploy_services() {
+    print_header "Deploying Services"
+    
+    print_deployment "Applying service configurations..."
+    kubectl apply -f kubeservice.yaml
+    
+    print_status "Waiting for services to be ready..."
+    sleep 10
+    
+    print_success "Services deployed successfully!"
+}
+
+# Function to verify deployments
+verify_deployments() {
+    print_header "Verifying Deployments"
+    
+    echo ""
+    print_status "Blue deployment status:"
+    kubectl get deployment "$BLUE_DEPLOYMENT" -o wide || print_warning "Blue deployment not found"
+    
+    echo ""
+    print_status "Green deployment status:"
+    kubectl get deployment "$GREEN_DEPLOYMENT" -o wide || print_warning "Green deployment not found"
+    
+    echo ""
+    print_status "All pods status:"
+    kubectl get pods -l app=django-messaging-app -o wide
+    
+    echo ""
+    print_status "Services status:"
+    kubectl get services -l app=django-messaging-app
+}
+
+# Function to check pod health
+check_pod_health() {
+    local deployment=$1
+    local version=$2
+    
+    print_header "Checking $version Pod Health"
+    
+    # Get pods for the deployment
+    PODS=$(kubectl get pods -l app=django-messaging-app,version="$version" -o jsonpath='{.items[*].metadata.name}')
+    
+    if [ -z "$PODS" ]; then
+        print_warning "No pods found for $version deployment"
+        return 1
+    fi
+    
+    # Check each pod
+    for pod in $PODS; do
+        print_status "Checking pod: $pod"
+        
+        # Check pod status
+        POD_STATUS=$(kubectl get pod "$pod" -o jsonpath='{.status.phase}')
+        print_status "Pod status: $POD_STATUS"
+        
+        # Check readiness
+        READY=$(kubectl get pod "$pod" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}')
+        print_status "Pod ready: $READY"
+        
+        # Get recent logs
+        print_status "Recent logs from $pod:"
+        kubectl logs "$pod" --tail=10 --timestamps=true || print_warning "Could not retrieve logs from $pod"
+        
+        echo "---"
+    done
+}
+
+# Function to test deployment endpoints
+test_endpoints() {
+    local version=$1
+    
+    print_header "Testing $version Endpoints"
+    
+    # Port forward to test the deployment
+    local service=""
+    if [ "$version" = "blue" ]; then
+        service="$BLUE_SERVICE"
+    elif [ "$version" = "green" ]; then
+        service="$GREEN_SERVICE"
+    fi
+    
+    print_status "Testing $service endpoint..."
+    
+    # Test using kubectl proxy or port-forward
+    kubectl port-forward service/"$service" 8080:80 &
+    PORT_FORWARD_PID=$!
+    sleep 5
+    
+    # Test health endpoint
+    if command_exists curl; then
+        print_status "Testing health endpoint..."
+        if curl -s --max-time 10 http://localhost:8080/health/ >/dev/null; then
+            print_success "$version deployment health check passed"
+        else
+            print_error "$version deployment health check failed"
+        fi
+    else
+        print_warning "curl not available for endpoint testing"
+    fi
+    
+    # Clean up port forward
+    kill $PORT_FORWARD_PID 2>/dev/null || true
+    wait $PORT_FORWARD_PID 2>/dev/null || true
+}
+
+# Function to switch traffic between blue and green
+switch_traffic() {
+    local target_version=$1
+    
+    print_header "Switching Traffic to $target_version"
+    
+    if [ "$target_version" != "blue" ] && [ "$target_version" != "green" ]; then
+        print_error "Invalid target version. Use 'blue' or 'green'"
+        return 1
+    fi
+    
+    print_deployment "Updating main service to point to $target_version..."
+    
+    # Update the main service selector
+    kubectl patch service "$MAIN_SERVICE" -p '{"spec":{"selector":{"version":"'$target_version'"}}}'
+    
+    # Also update external service if it exists
+    kubectl patch service django-messaging-service-external -p '{"spec":{"selector":{"version":"'$target_version'"}}}' 2>/dev/null || true
+    
+    print_success "Traffic switched to $target_version deployment"
+    
+    # Verify the switch
+    sleep 5
+    CURRENT_VERSION=$(get_active_deployment)
+    print_status "Current active deployment: $CURRENT_VERSION"
+}
+
+# Function to perform gradual traffic switching
+gradual_switch() {
+    print_header "Performing Gradual Traffic Switch"
+    
+    print_status "Current traffic distribution:"
+    kubectl get endpoints "$MAIN_SERVICE" -o wide
+    
+    print_warning "For true gradual switching, consider using:"
+    echo "• Istio service mesh with traffic splitting"
+    echo "• NGINX Ingress with canary annotations"
+    echo "• Argo Rollouts for advanced deployment strategies"
+    
+    print_status "Proceeding with immediate switch for this demo..."
+    switch_traffic "green"
+}
+
+# Function to rollback to previous version
+rollback() {
+    print_header "Rolling Back to Blue Deployment"
+    
+    print_warning "Rolling back to blue deployment..."
+    switch_traffic "blue"
+    
+    print_success "Rollback completed!"
+}
+
+# Function to cleanup old deployment
+cleanup_old_deployment() {
+    local version_to_remove=$1
+    
+    print_header "Cleaning Up Old Deployment"
+    
+    print_warning "This will remove the $version_to_remove deployment"
+    read -p "Are you sure? (y/N): " -n 1 -r
+    echo
+    
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        if [ "$version_to_remove" = "blue" ]; then
+            kubectl delete -f blue_deployment.yaml
+        elif [ "$version_to_remove" = "green" ]; then
+            kubectl delete -f green_deployment.yaml
+        fi
+        print_success "$version_to_remove deployment removed"
+    else
+        print_status "Cleanup cancelled"
+    fi
+}
+
+# Function to show deployment status
+show_status() {
+    print_header "Blue-Green Deployment Status"
+    
+    ACTIVE_VERSION=$(get_active_deployment)
+    print_status "Active deployment: $ACTIVE_VERSION"
+    
+    echo ""
+    print_status "Deployments:"
+    kubectl get deployments -l app=django-messaging-app -o wide
+    
+    echo ""
+    print_status "Services:"
+    kubectl get services -l app=django-messaging-app
+    
+    echo ""
+    print_status "Pods:"
+    kubectl get pods -l app=django-messaging-app -o wide
+    
+    echo ""
+    print_status "Endpoints:"
+    kubectl get endpoints -l app=django-messaging-app
+}
+
+# Function to show help
+show_help() {
+    echo "Usage: $0 [COMMAND]"
+    echo ""
+    echo "Commands:"
+    echo "  deploy-all       Deploy both blue and green versions with services"
+    echo "  deploy-blue      Deploy only blue version"
+    echo "  deploy-green     Deploy only green version"
+    echo "  switch-blue      Switch traffic to blue deployment"
+    echo "  switch-green     Switch traffic to green deployment"
+    echo "  gradual-switch   Perform gradual traffic switching to green"
+    echo "  test-blue        Test blue deployment endpoints"
+    echo "  test-green       Test green deployment endpoints"
+    echo "  rollback         Rollback to blue deployment"
+    echo "  cleanup-blue     Remove blue deployment"
+    echo "  cleanup-green    Remove green deployment"
+    echo "  status           Show current deployment status"
+    echo "  help             Show this help message"
+    echo ""
+    echo "Default: deploy-all"
+}
+
+# Main execution function
+main() {
+    local command=${1:-deploy-all}
+    
+    case $command in
+        deploy-all)
+            check_prerequisites
+            deploy_blue
+            deploy_green
+            deploy_services
+            verify_deployments
+            check_pod_health "$BLUE_DEPLOYMENT" "blue"
+            check_pod_health "$GREEN_DEPLOYMENT" "green"
+            test_endpoints "blue"
+            test_endpoints "green"
+            show_status
+            ;;
+        deploy-blue)
+            check_prerequisites
+            deploy_blue
+            check_pod_health "$BLUE_DEPLOYMENT" "blue"
+            test_endpoints "blue"
+            ;;
+        deploy-green)
+            check_prerequisites
+            deploy_green
+            check_pod_health "$GREEN_DEPLOYMENT" "green"
+            test_endpoints "green"
+            ;;
+        switch-blue)
+            switch_traffic "blue"
+            ;;
+        switch-green)
+            switch_traffic "green"
+            ;;
+        gradual-switch)
+            gradual_switch
+            ;;
+        test-blue)
+            test_endpoints "blue"
+            ;;
+        test-green)
+            test_endpoints "green"
+            ;;
+        rollback)
+            rollback
+            ;;
+        cleanup-blue)
+            cleanup_old_deployment "blue"
+            ;;
+        cleanup-green)
+            cleanup_old_deployment "green"
+            ;;
+        status)
+            show_status
+            ;;
+        help)
+            show_help
+            ;;
+        *)
+            print_error "Unknown command: $command"
+            show_help
+            exit 1
+            ;;
+    esac
+}
+
+# Error handling
+trap 'print_error "Script failed at line $LINENO"' ERR
+
+# Cleanup function
+cleanup() {
+    # Kill any background port-forward processes
+    jobs -p | xargs -r kill 2>/dev/null || true
+}
+trap cleanup EXIT
+
+# Run main function
+main "$@"
