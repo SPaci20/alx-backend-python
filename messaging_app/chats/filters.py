@@ -1,6 +1,6 @@
 import django_filters
 from django_filters import rest_framework as filters
-from .models import Message
+from .models import Message, Conversation
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
@@ -11,11 +11,10 @@ class MessageFilter(filters.FilterSet):
     or messages within a time range.
     """
     
-    # Filter for messages with a specific user (participant)
-    participant = filters.ModelChoiceFilter(
-        field_name='conversation__participants',
+    # Filter for conversations with a specific user
+    with_user = filters.ModelChoiceFilter(
         queryset=User.objects.all(),
-        method='filter_by_participant'
+        method='filter_conversations_with_user'
     )
     
     # Filter for messages within a time range
@@ -33,14 +32,21 @@ class MessageFilter(filters.FilterSet):
     
     class Meta:
         model = Message
-        fields = ['participant', 'start_date', 'end_date', 'conversation', 'sender']
+        fields = ['with_user', 'start_date', 'end_date', 'conversation', 'sender']
     
-    def filter_by_participant(self, queryset, name, value):
+    def filter_conversations_with_user(self, queryset, name, value):
         """
-        Custom method to filter messages where the specified user is a participant
-        in the conversation, but exclude messages from other conversations that might
-        have the same user as participant.
+        Filter messages to only show those from conversations that include the specified user.
+        This retrieves conversations with specific users as requested.
         """
         if value:
-            return queryset.filter(conversation__participants=value)
+            # Get conversations that include both the current user and the specified user
+            user_conversations = Conversation.objects.filter(
+                participants=self.request.user
+            ).filter(
+                participants=value
+            ).distinct()
+            
+            # Return messages from those conversations
+            return queryset.filter(conversation__in=user_conversations)
         return queryset

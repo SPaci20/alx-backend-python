@@ -33,7 +33,7 @@ class MessageViewSet(viewsets.ModelViewSet):
         # Filter to only show messages from conversations the user is a part of
         base_queryset = Message.objects.filter(
             conversation__participants=user
-        ).distinct().order_by('-timestamp')  # Changed to descending order for most recent first
+        ).distinct().order_by('-timestamp')  # Most recent first
 
         if conversation_id:
             try:
