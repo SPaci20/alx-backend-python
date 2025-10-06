@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
 
     'rest_framework',
+    'django_filters',
     'chats',
 ]
 
@@ -142,6 +143,11 @@ REST_FRAMEWORK = {
         'rest_framework.authentication.SessionAuthentication',
         # Added to satisfy the check
         'rest_framework.authentication.BasicAuthentication',
+    ],
+    
+    # Add DjangoFilterBackend as a default filter backend
+    'DEFAULT_FILTER_BACKENDS': [
+        'django_filters.rest_framework.DjangoFilterBackend',
     ],
 }
 

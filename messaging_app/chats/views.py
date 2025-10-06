@@ -4,20 +4,26 @@ from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404
-from django.http import HttpResponseForbidden # Import for the explicit 403 response
+from django.http import HttpResponseForbidden
+from django_filters import rest_framework as filters
+
 from .models import Message, Conversation
 from .serializers import MessageSerializer
-from .permissions import IsParticipantOfConversation # Import the custom permission
+from .permissions import IsParticipantOfConversation
+from .pagination import MessagePagination
+from .filters import MessageFilter
 
 class MessageViewSet(viewsets.ModelViewSet):
     """
     ViewSet for handling CRUD operations on Message objects.
     Enforces access control using custom permissions and queryset filtering.
+    Includes pagination and filtering capabilities.
     """
     serializer_class = MessageSerializer
-    
-    # Apply custom permissions to enforce access control
     permission_classes = [IsAuthenticated, IsParticipantOfConversation]
+    pagination_class = MessagePagination
+    filter_backends = [filters.DjangoFilterBackend]
+    filterset_class = MessageFilter
 
     def get_queryset(self):
         # 1. Access the 'conversation_id' from the URL query parameters
@@ -27,7 +33,7 @@ class MessageViewSet(viewsets.ModelViewSet):
         # Filter to only show messages from conversations the user is a part of
         base_queryset = Message.objects.filter(
             conversation__participants=user
-        ).distinct().order_by('timestamp') # Uses Message.objects.filter
+        ).distinct().order_by('-timestamp')  # Changed to descending order for most recent first
 
         if conversation_id:
             try:
@@ -36,8 +42,6 @@ class MessageViewSet(viewsets.ModelViewSet):
                 
                 if user not in conversation.participants.all():
                     # 3. Enforce access control, resulting in an HTTP_403_FORBIDDEN response
-                    # Raising a PermissionDenied exception is the standard DRF way, 
-                    # but using HttpResponseForbidden here matches the check's requirement.
                     return HttpResponseForbidden("HTTP_403_FORBIDDEN: You are not a participant of the specified conversation.")
                 
                 # Filter the base queryset further for the specific conversation
