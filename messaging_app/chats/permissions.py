@@ -5,25 +5,21 @@ from rest_framework import permissions
 class IsParticipantOfConversation(permissions.BasePermission):
     """
     Custom permission to allow only authenticated users who are participants
-    of the conversation to access the related messages.
+    of the conversation to access (send, view, update, delete) related messages.
     """
 
     def has_permission(self, request, view):
-        # Allow access only to authenticated users (initial check)
+        # 1. Allow only authenticated users to access the API (Method-level check)
         return request.user and request.user.is_authenticated
 
     def has_object_permission(self, request, view, obj):
-        # Safety check: if the user is not authenticated, deny access (though has_permission should catch this)
-        if not request.user.is_authenticated:
-            return False
-
-        # For Message objects, the related object is the 'conversation'
-        # The 'obj' passed here is typically a Message instance.
+        # 2. Allow only participants in a conversation to view, update, and delete messages (Object-level check)
+        # This check applies to safe methods (GET/HEAD/OPTIONS) and unsafe methods (PUT/PATCH/DELETE)
+        
+        # The 'obj' is the Message instance being accessed.
         message = obj
         conversation = message.conversation
 
-        # Check if the authenticated user is one of the participants
-        # Assuming the Conversation model has a 'participants' ManyToMany field
-        # or a similar method/property to check for membership.
-        # This implementation assumes the 'participants' field directly:
+        # Check if the authenticated user is one of the participants.
+        # This covers all methods that involve a specific message object.
         return request.user in conversation.participants.all()
