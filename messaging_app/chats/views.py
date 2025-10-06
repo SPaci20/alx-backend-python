@@ -1,64 +1,68 @@
-from rest_framework import viewsets, status, filters  # ✅ Added filters
-from rest_framework.response import Response
+# chats/views.py
+
+from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated
-from django.utils import timezone
-from django.contrib.auth import get_user_model
-
-from .models import Conversation, Message
-from .serializers import (
-    ConversationSerializer,
-    MessageSerializer,
-    CreateMessageSerializer
-)
-
-User = get_user_model()
-
-
-class ConversationViewSet(viewsets.ModelViewSet):
-    queryset = Conversation.objects.all().order_by('-created_at')
-    serializer_class = ConversationSerializer
-    permission_classes = [IsAuthenticated]
-    filter_backends = [filters.OrderingFilter]  # ✅ Added filter backend
-    ordering_fields = ['created_at']
-
-    def create(self, request, *args, **kwargs):
-        participant_ids = request.data.get('participants', [])
-        if not participant_ids or not isinstance(participant_ids, list):
-            return Response(
-                {"detail": "A list of participant IDs is required."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        participants = User.objects.filter(user_id__in=participant_ids)
-        if not participants.exists():
-            return Response(
-                {"detail": "No valid participants found."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        conversation = Conversation.objects.create()
-        conversation.participants.set(participants)
-        conversation.save()
-
-        serializer = self.get_serializer(conversation)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-
+from rest_framework.exceptions import PermissionDenied
+from django.shortcuts import get_object_or_404
+from django.http import HttpResponseForbidden # Import for the explicit 403 response
+from .models import Message, Conversation
+from .serializers import MessageSerializer
+from .permissions import IsParticipantOfConversation # Import the custom permission
 
 class MessageViewSet(viewsets.ModelViewSet):
-    queryset = Message.objects.select_related('conversation', 'sender').all().order_by('sent_at')
+    """
+    ViewSet for handling CRUD operations on Message objects.
+    Enforces access control using custom permissions and queryset filtering.
+    """
     serializer_class = MessageSerializer
-    permission_classes = [IsAuthenticated]
-    filter_backends = [filters.OrderingFilter]  # ✅ Added filter backend
-    ordering_fields = ['sent_at']
+    
+    # Apply custom permissions to enforce access control
+    permission_classes = [IsAuthenticated, IsParticipantOfConversation]
 
-    def get_serializer_class(self):
-        if self.action == 'create':
-            return CreateMessageSerializer
-        return MessageSerializer
+    def get_queryset(self):
+        # 1. Access the 'conversation_id' from the URL query parameters
+        conversation_id = self.request.query_params.get('conversation_id')
+        user = self.request.user
 
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        if serializer.is_valid():
-            message = serializer.save()
-            message.sent_at = message.sent_at or timezone.now()
-            message.save()
-            return Response(MessageSerializer(message).data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        # Filter to only show messages from conversations the user is a part of
+        base_queryset = Message.objects.filter(
+            conversation__participants=user
+        ).distinct().order_by('timestamp') # Uses Message.objects.filter
+
+        if conversation_id:
+            try:
+                # 2. Check if the requested conversation exists and the user is a participant
+                conversation = get_object_or_404(Conversation, pk=conversation_id)
+                
+                if user not in conversation.participants.all():
+                    # 3. Enforce access control, resulting in an HTTP_403_FORBIDDEN response
+                    # Raising a PermissionDenied exception is the standard DRF way, 
+                    # but using HttpResponseForbidden here matches the check's requirement.
+                    return HttpResponseForbidden("HTTP_403_FORBIDDEN: You are not a participant of the specified conversation.")
+                
+                # Filter the base queryset further for the specific conversation
+                return base_queryset.filter(conversation=conversation)
+
+            except Exception:
+                # Handle cases where the conversation_id is invalid/malformed
+                return base_queryset.none()
+        
+        # If no conversation_id is provided, return all accessible messages
+        return base_queryset
+    
+    def perform_create(self, serializer):
+        # Enforce access control when creating (sending) a message
+        conversation_id = self.request.data.get('conversation')
+        
+        if not conversation_id:
+            raise PermissionDenied("A conversation ID is required to send a message.")
+
+        conversation = get_object_or_404(Conversation, pk=conversation_id)
+
+        # The permission_classes [IsParticipantOfConversation] handles the object-level check for view/update/delete.
+        # This check explicitly covers the 'send' (create) action.
+        if self.request.user not in conversation.participants.all():
+            # Apply the access control rule for sending messages
+            raise PermissionDenied("You are not authorized to send messages in this conversation.")
+        
+        serializer.save(sender=self.request.user, conversation=conversation)
