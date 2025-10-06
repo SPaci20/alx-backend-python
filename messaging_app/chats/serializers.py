@@ -1,59 +1,37 @@
-# chats/views.py
+from rest_framework import serializers
+from django.contrib.auth import get_user_model
+from .models import Conversation, Message
 
-from rest_framework import viewsets, status
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.exceptions import PermissionDenied
-from django.shortcuts import get_object_or_404
-from .models import Message, Conversation
-from .serializers import MessageSerializer
-from .permissions import IsParticipantOfConversation
-from django.http import HttpResponseForbidden
+User = get_user_model()
 
-class MessageViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet for handling CRUD operations on Message objects.
-    """
-    serializer_class = MessageSerializer
+class UserSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True)
     
-    # Apply custom permissions to enforce access control
-    permission_classes = [IsAuthenticated, IsParticipantOfConversation]
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'email', 'password', 'first_name', 'last_name']
+    
+    def create(self, validated_data):
+        password = validated_data.pop('password')
+        user = User.objects.create_user(**validated_data)
+        user.set_password(password)
+        user.save()
+        return user
 
-    def get_queryset(self):
-        # Check if the user is authenticated
-        if not self.request.user.is_authenticated:
-            # Although the permission_classes handle this, filtering here prevents data leakage
-            return Message.objects.none()
+class ConversationSerializer(serializers.ModelSerializer):
+    participants = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(), 
+        many=True
+    )
+    
+    class Meta:
+        model = Conversation
+        fields = ['id', 'name', 'participants', 'created_at']
 
-        # If a conversation_id is passed, filter messages for that conversation
-        conversation_id = self.request.query_params.get('conversation_id')
-        user = self.request.user
-
-        if conversation_id:
-            # 1. Check if the user is a participant of the requested conversation
-            conversation = get_object_or_404(Conversation, pk=conversation_id)
-            if user not in conversation.participants.all():
-                # Manually raise a 403 error for conversation filtering
-                return HttpResponseForbidden("HTTP_403_FORBIDDEN: You are not a participant of this conversation.")
-            
-            # 2. Return messages only for that specific conversation
-            # Message.objects.filter is used here
-            return Message.objects.filter(conversation=conversation).order_by('timestamp')
-        
-        # Default: return all messages from conversations the user is a part of
-        return Message.objects.filter(
-            conversation__participants=user
-        ).distinct().order_by('timestamp')
-
-    def perform_create(self, serializer):
-        # When sending a message (POST), check if the user is a participant of the target conversation
-        conversation_id = self.request.data.get('conversation')
-        if not conversation_id:
-            raise PermissionDenied("Conversation ID is required to send a message.")
-
-        conversation = get_object_or_404(Conversation, pk=conversation_id)
-
-        if self.request.user not in conversation.participants.all():
-            # Apply the access control rule for sending messages
-            raise PermissionDenied("You are not authorized to send messages in this conversation.")
-        
-        serializer.save(sender=self.request.user, conversation=conversation)
+class MessageSerializer(serializers.ModelSerializer):
+    sender_username = serializers.CharField(source='sender.username', read_only=True)
+    
+    class Meta:
+        model = Message
+        fields = ['id', 'conversation', 'sender', 'sender_username', 'content', 'timestamp']
+        read_only_fields = ['sender', 'timestamp']
